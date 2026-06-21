@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from ..config import GOLDEN_SETS_DIR, get_settings
@@ -116,12 +116,7 @@ def get_scenario(scenario_id: str) -> dict[str, Any]:
 
 
 # ---------- 진단·개인화 앞단 퍼널 (P1.5) ----------
-@router.post("/diagnose")
-def diagnose(req: DiagnoseReq) -> dict[str, Any]:
-    svc = _llm_service()
-    if not req.resume_text.strip():
-        raise HTTPException(400, "이력서/포폴 텍스트가 비어 있습니다")
-    rep = svc.diagnose_resume(req.resume_text, _diagnosis_rubric)
+def _diagnosis_view(rep) -> dict[str, Any]:
     return {
         "rubric": f"{rep.rubric_id} v{rep.rubric_version}",
         "weighted_total": rep.weighted_total,
@@ -140,6 +135,42 @@ def diagnose(req: DiagnoseReq) -> dict[str, Any]:
         ],
         "summary": rep.summary,
     }
+
+
+@router.post("/diagnose")
+def diagnose(req: DiagnoseReq) -> dict[str, Any]:
+    svc = _llm_service()
+    if not req.resume_text.strip():
+        raise HTTPException(400, "이력서/포폴 텍스트가 비어 있습니다")
+    rep = svc.diagnose_resume(req.resume_text, _diagnosis_rubric)
+    return _diagnosis_view(rep)
+
+
+@router.post("/diagnose/upload")
+async def diagnose_upload(file: UploadFile = File(...)) -> dict[str, Any]:
+    svc = _llm_service()  # 키 없으면 503 (추출 전에 가드)
+    from ..diagnosis.extract import (
+        EmptyExtraction,
+        FileTooLarge,
+        UnsupportedFileType,
+        extract_text,
+    )
+
+    data = await file.read()
+    try:
+        text = extract_text(file.filename or "", data)
+    except UnsupportedFileType as e:
+        raise HTTPException(415, str(e))
+    except FileTooLarge as e:
+        raise HTTPException(413, str(e))
+    except EmptyExtraction as e:
+        raise HTTPException(422, str(e))
+
+    rep = svc.diagnose_resume(text, _diagnosis_rubric)
+    view = _diagnosis_view(rep)
+    view["extracted_chars"] = len(text)
+    view["filename"] = file.filename
+    return view
 
 
 # ---------- 세션 ----------

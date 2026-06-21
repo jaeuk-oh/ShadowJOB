@@ -15,6 +15,14 @@ export default function DiagnosePage() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function describeError(err: ApiError): string {
+    if (err.status === 503)
+      return "LLM 키가 없어 진단할 수 없습니다 (백엔드 OPENAI_API_KEY).";
+    if (err.status === 415 || err.status === 413 || err.status === 422)
+      return err.message; // 미지원 형식 / 너무 큼 / 추출 실패 안내
+    return `진단 실패: ${err.message}`;
+  }
+
   async function run() {
     if (!text.trim()) return;
     setBusy(true);
@@ -22,12 +30,19 @@ export default function DiagnosePage() {
     try {
       setReport(await api.diagnose(text));
     } catch (e) {
-      const err = e as ApiError;
-      setError(
-        err.status === 503
-          ? "LLM 키가 없어 진단할 수 없습니다 (백엔드 OPENAI_API_KEY)."
-          : `진단 실패: ${err.message}`
-      );
+      setError(describeError(e as ApiError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runFile(file: File) {
+    setBusy(true);
+    setError(null);
+    try {
+      setReport(await api.diagnoseFile(file));
+    } catch (e) {
+      setError(describeError(e as ApiError));
     } finally {
       setBusy(false);
     }
@@ -53,6 +68,23 @@ export default function DiagnosePage() {
         시뮬에서 무엇을 보완하면 좋을지 알려드립니다. (붙여넣은 내용은 진단에만 사용)
       </p>
 
+      <div className="card" style={{ marginBottom: 12 }}>
+        <b>파일 업로드</b>{" "}
+        <span className="hint">PDF · DOCX · TXT (구형 .doc은 .docx/.pdf로 저장해 올려주세요)</span>
+        <div style={{ marginTop: 8 }}>
+          <input
+            type="file"
+            accept=".pdf,.docx,.txt,.md"
+            disabled={busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) runFile(f);
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="hint" style={{ margin: "8px 0" }}>또는 직접 붙여넣기</div>
       <textarea
         rows={12}
         value={text}

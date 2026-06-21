@@ -81,4 +81,25 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ resume_text }),
     }),
+
+  // 파일 업로드는 multipart — JSON 헤더를 붙이지 않는다(브라우저가 boundary 설정)
+  diagnoseFile: async (file: File): Promise<DiagnosisReport> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE}/api/diagnose/upload`, {
+      method: "POST",
+      body: form,
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail ?? detail;
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(res.status, detail);
+    }
+    return (await res.json()) as DiagnosisReport;
+  },
 };
