@@ -1,4 +1,5 @@
 import type {
+  DiagnosisReport,
   Metrics,
   Scenario,
   SessionView,
@@ -74,4 +75,10 @@ export const api = {
     }),
 
   getMetrics: () => req<Metrics>(`/api/metrics`),
+
+  diagnose: (resume_text: string) =>
+    req<DiagnosisReport>(`/api/diagnose`, {
+      method: "POST",
+      body: JSON.stringify({ resume_text }),
+    }),
 };

@@ -65,6 +65,22 @@ export interface Weapons {
   process_record: string;
 }
 
+export interface FocusItem {
+  id: string;
+  area: string;
+  message: string;
+}
+
+export interface DiagnosisReport {
+  rubric: string;
+  weighted_total: number;
+  meets_bar: boolean;
+  scores: CriterionScore[];
+  gaps: CriterionScore[];
+  recommended_focus: FocusItem[];
+  summary: string;
+}
+
 export interface Metrics {
   total_sessions: number;
   completed: number;

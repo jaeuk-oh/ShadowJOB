@@ -49,6 +49,12 @@ class SessionService:
     def get_scenario(self, scenario_id: str) -> ScenarioBundle:
         return load_scenario(scenario_id)
 
+    # ---------- 진단·개인화 앞단 퍼널 (P1.5) ----------
+    def diagnose_resume(self, resume_text: str, diagnosis_rubric: Rubric):
+        from ..diagnosis.diagnose import diagnose
+
+        return diagnose(self.provider, diagnosis_rubric, resume_text)
+
     # ---------- 세션 ----------
     def create_session(self, scenario_id: str, *, max_revisions: int = 1) -> SessionRecord:
         rec = SessionRecord(

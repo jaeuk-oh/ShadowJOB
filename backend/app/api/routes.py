@@ -23,6 +23,7 @@ _settings = get_settings()
 _repo = get_repository(_settings)
 _rubric = load_rubric(GOLDEN_SETS_DIR / "ax-pm" / "rubric.json")
 _golden = (GOLDEN_SETS_DIR / "ax-pm" / "golden-01-strong.md").read_text(encoding="utf-8")
+_diagnosis_rubric = load_rubric(GOLDEN_SETS_DIR / "ax-pm" / "diagnosis-rubric.json")
 
 
 class _NullProvider:
@@ -91,6 +92,10 @@ class BlindEvalReq(BaseModel):
     comment: str = ""
 
 
+class DiagnoseReq(BaseModel):
+    resume_text: str
+
+
 # ---------- 시나리오 ----------
 @router.get("/scenarios/{scenario_id}")
 def get_scenario(scenario_id: str) -> dict[str, Any]:
@@ -107,6 +112,33 @@ def get_scenario(scenario_id: str) -> dict[str, Any]:
         ],
         "assets": {"cs_logs_csv": b.cs_logs_csv, "dashboard_md": b.dashboard_md},
         "brief_template": b.brief_template,
+    }
+
+
+# ---------- 진단·개인화 앞단 퍼널 (P1.5) ----------
+@router.post("/diagnose")
+def diagnose(req: DiagnoseReq) -> dict[str, Any]:
+    svc = _llm_service()
+    if not req.resume_text.strip():
+        raise HTTPException(400, "이력서/포폴 텍스트가 비어 있습니다")
+    rep = svc.diagnose_resume(req.resume_text, _diagnosis_rubric)
+    return {
+        "rubric": f"{rep.rubric_id} v{rep.rubric_version}",
+        "weighted_total": rep.weighted_total,
+        "meets_bar": rep.meets_bar,
+        "scores": [
+            {"id": s.criterion_id, "score": s.score, "evidence": s.evidence}
+            for s in rep.scores
+        ],
+        "gaps": [
+            {"id": g.criterion_id, "score": g.score, "evidence": g.evidence}
+            for g in rep.gaps
+        ],
+        "recommended_focus": [
+            {"id": f.criterion_id, "area": f.area, "message": f.message}
+            for f in rep.recommended_focus
+        ],
+        "summary": rep.summary,
     }
 
 

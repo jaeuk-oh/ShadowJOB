@@ -60,11 +60,17 @@ export default function StartPage() {
               ))}
             </ul>
           </div>
-          <button onClick={start} disabled={starting}>
-            {starting ? "입사 중…" : "입사하기 (세션 시작)"}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={start} disabled={starting}>
+              {starting ? "입사 중…" : "입사하기 (세션 시작)"}
+            </button>
+            <button className="secondary" onClick={() => router.push("/diagnose")}>
+              이력서로 먼저 진단받기
+            </button>
+          </div>
           <p className="hint">
             첫날처럼 시작됩니다. 자료를 직접 열어보고, 동료들과 이야기하고, Problem Brief를 써서 제출하세요.
+            기존 이력서가 있다면 먼저 진단받고 약점을 의식하며 시작할 수 있습니다.
           </p>
         </>
       )}
