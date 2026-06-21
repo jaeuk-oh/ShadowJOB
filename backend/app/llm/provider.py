@@ -11,8 +11,13 @@ import json
 from typing import Any, Callable, Protocol
 
 
+class Turn(Protocol):
+    role: str
+    content: str
+
+
 class LLMProvider(Protocol):
-    """JSON 스키마에 맞는 구조화 출력을 반환하는 최소 인터페이스."""
+    """LLM 최소 인터페이스. 평가는 구조화 출력, 페르소나는 자유 텍스트."""
 
     def complete_json(
         self,
@@ -23,6 +28,16 @@ class LLMProvider(Protocol):
         schema_name: str = "response",
         temperature: float | None = None,
     ) -> dict[str, Any]:
+        ...
+
+    def complete_text(
+        self,
+        *,
+        system: str,
+        messages: list[dict[str, str]],
+        temperature: float | None = None,
+    ) -> str:
+        """대화 히스토리(messages: [{role, content}])를 받아 다음 발화를 생성."""
         ...
 
 
@@ -67,16 +82,33 @@ class OpenAIProvider:
         content = resp.choices[0].message.content or "{}"
         return json.loads(content)
 
+    def complete_text(
+        self,
+        *,
+        system: str,
+        messages: list[dict[str, str]],
+        temperature: float | None = None,
+    ) -> str:
+        resp = self._client.chat.completions.create(
+            model=self.model,
+            temperature=self.temperature if temperature is None else temperature,
+            messages=[{"role": "system", "content": system}, *messages],
+        )
+        return resp.choices[0].message.content or ""
+
 
 class MockProvider:
-    """테스트용. 호출마다 `responder(system, user)`가 돌려주는 dict를 반환.
+    """테스트용. JSON/텍스트 응답을 각각 주입한다. 호출 기록을 남긴다."""
 
-    채점 일관성 하니스 테스트를 위해 호출 횟수를 기록한다.
-    """
-
-    def __init__(self, responder: Callable[[str, str], dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        responder: Callable[[str, str], dict[str, Any]] | None = None,
+        text_responder: Callable[[str, list[dict[str, str]]], str] | None = None,
+    ) -> None:
         self._responder = responder
+        self._text_responder = text_responder
         self.calls: list[tuple[str, str]] = []
+        self.text_calls: list[tuple[str, list[dict[str, str]]]] = []
 
     def complete_json(
         self,
@@ -87,8 +119,22 @@ class MockProvider:
         schema_name: str = "response",
         temperature: float | None = None,
     ) -> dict[str, Any]:
+        if self._responder is None:
+            raise RuntimeError("MockProvider에 json responder가 없습니다.")
         self.calls.append((system, user))
         return self._responder(system, user)
+
+    def complete_text(
+        self,
+        *,
+        system: str,
+        messages: list[dict[str, str]],
+        temperature: float | None = None,
+    ) -> str:
+        if self._text_responder is None:
+            raise RuntimeError("MockProvider에 text responder가 없습니다.")
+        self.text_calls.append((system, messages))
+        return self._text_responder(system, messages)
 
 
 def build_default_provider(settings: Any) -> LLMProvider:
