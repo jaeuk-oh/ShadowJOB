@@ -9,6 +9,7 @@ import { AssetViewer } from "@/app/components/AssetViewer";
 import { BriefEditor } from "@/app/components/BriefEditor";
 import { ReviewFeedback } from "@/app/components/ReviewFeedback";
 import { WeaponView } from "@/app/components/WeaponView";
+import { SurveyWidget } from "@/app/components/SurveyWidget";
 
 export default function Workspace({
   params,
@@ -115,6 +116,7 @@ export default function Workspace({
             {completed && !weapons && (
               <p className="muted" style={{ marginTop: 12 }}>무기 패키지를 불러오는 중…</p>
             )}
+            {completed && <SurveyWidget sessionId={id} />}
           </div>
         </div>
       </div>

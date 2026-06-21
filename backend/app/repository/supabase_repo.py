@@ -45,3 +45,7 @@ class SupabaseSessionRepository:
             .execute()
         )
         return bool(res.data)
+
+    def list_all(self) -> list[SessionRecord]:
+        res = self._client.table(TABLE).select("data").execute()
+        return [SessionRecord.from_dict(r["data"]) for r in (res.data or [])]

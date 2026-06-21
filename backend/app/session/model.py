@@ -56,6 +56,13 @@ class SessionRecord:
     # 페르소나별 대화 히스토리 (정보 비대칭 유지, 영속화 대상)
     persona_histories: dict[str, list[dict[str, str]]] = field(default_factory=dict)
 
+    # --- 베타 계측 (P1-23) ---
+    created_at: str = field(default_factory=_now)
+    events: list[dict[str, str]] = field(default_factory=list)  # {type, at} 전이/이벤트 로그
+    survey_star_self_report: bool | None = None  # "STAR로 말할 수 있다" 자가응답
+    survey_comment: str = ""
+    blind_evals: list[dict[str, Any]] = field(default_factory=list)  # 담당자 블라인드 평가
+
     # --- 직렬화 (Supabase/JSON 영속화용) ---
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -69,6 +76,11 @@ class SessionRecord:
             "rejections": list(self.rejections),
             "decision_logs": [vars(d) for d in self.decision_logs],
             "persona_histories": self.persona_histories,
+            "created_at": self.created_at,
+            "events": self.events,
+            "survey_star_self_report": self.survey_star_self_report,
+            "survey_comment": self.survey_comment,
+            "blind_evals": self.blind_evals,
         }
 
     @classmethod
@@ -85,12 +97,19 @@ class SessionRecord:
         rec.rejections = list(data.get("rejections", []))
         rec.decision_logs = [DecisionLogEntry(**d) for d in data.get("decision_logs", [])]
         rec.persona_histories = data.get("persona_histories", {})
+        if data.get("created_at"):
+            rec.created_at = data["created_at"]
+        rec.events = list(data.get("events", []))
+        rec.survey_star_self_report = data.get("survey_star_self_report")
+        rec.survey_comment = data.get("survey_comment", "")
+        rec.blind_evals = list(data.get("blind_evals", []))
         return rec
 
     # --- 상태 전이 ---
     def transition(self, dst: State) -> None:
         assert_transition(self.state, dst)
         self.state = dst
+        self.events.append({"type": f"state:{dst.value}", "at": _now()})
 
     # --- 진행 액션 ---
     def receive_task(self) -> None:
@@ -116,6 +135,19 @@ class SessionRecord:
 
     def record_decision(self, note: str) -> None:
         self.decision_logs.append(DecisionLogEntry(note=note))
+
+    # --- 베타 계측 입력 ---
+    def record_survey(self, star_self_report: bool, comment: str = "") -> None:
+        """종료 설문: 이 경험을 면접에서 STAR로 말할 수 있겠는가."""
+        self.survey_star_self_report = star_self_report
+        self.survey_comment = comment
+        self.events.append({"type": "survey", "at": _now()})
+
+    def record_blind_eval(self, looks_real: bool, evaluator: str = "", comment: str = "") -> None:
+        """채용 담당자 블라인드 평가: '진짜 실무자 결과물 같다'."""
+        self.blind_evals.append(
+            {"looks_real": looks_real, "evaluator": evaluator, "comment": comment, "at": _now()}
+        )
 
     @property
     def revisions_used(self) -> int:
@@ -155,6 +187,13 @@ class SessionRecord:
     @property
     def passed(self) -> bool:
         return bool(self.evaluations) and self.evaluations[-1].passed
+
+    @property
+    def completed_at(self) -> str | None:
+        for ev in reversed(self.events):
+            if ev["type"] == f"state:{State.COMPLETED.value}":
+                return ev["at"]
+        return None
 
 
 def _eval_to_dict(e: Evaluation) -> dict[str, Any]:

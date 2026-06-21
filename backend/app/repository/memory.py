@@ -23,3 +23,6 @@ class InMemorySessionRepository:
 
     def exists(self, session_id: str) -> bool:
         return session_id in self._store
+
+    def list_all(self) -> list[SessionRecord]:
+        return [SessionRecord.from_dict(d) for d in self._store.values()]

@@ -1,4 +1,5 @@
 import type {
+  Metrics,
   Scenario,
   SessionView,
   SubmitResult,
@@ -65,4 +66,12 @@ export const api = {
     }),
 
   getWeapons: (id: string) => req<Weapons>(`/api/sessions/${id}/weapons`),
+
+  recordSurvey: (id: string, star_self_report: boolean, comment = "") =>
+    req<{ ok: boolean }>(`/api/sessions/${id}/survey`, {
+      method: "POST",
+      body: JSON.stringify({ star_self_report, comment }),
+    }),
+
+  getMetrics: () => req<Metrics>(`/api/metrics`),
 };

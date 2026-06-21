@@ -80,6 +80,17 @@ class SubmitReq(BaseModel):
     text: str
 
 
+class SurveyReq(BaseModel):
+    star_self_report: bool
+    comment: str = ""
+
+
+class BlindEvalReq(BaseModel):
+    looks_real: bool
+    evaluator: str = ""
+    comment: str = ""
+
+
 # ---------- 시나리오 ----------
 @router.get("/scenarios/{scenario_id}")
 def get_scenario(scenario_id: str) -> dict[str, Any]:
@@ -163,6 +174,28 @@ def submit(session_id: str, req: SubmitReq) -> dict[str, Any]:
             "overall_comment": ev.overall_comment,
         },
     }
+
+
+# ---------- 베타 계측 (P1-23) ----------
+@router.post("/sessions/{session_id}/survey")
+def survey(session_id: str, req: SurveyReq) -> dict[str, Any]:
+    svc = _base_service()
+    _require(lambda: svc.get_session(session_id))
+    svc.record_survey(session_id, req.star_self_report, req.comment)
+    return {"ok": True}
+
+
+@router.post("/sessions/{session_id}/blind-eval")
+def blind_eval(session_id: str, req: BlindEvalReq) -> dict[str, Any]:
+    svc = _base_service()
+    _require(lambda: svc.get_session(session_id))
+    svc.record_blind_eval(session_id, req.looks_real, req.evaluator, req.comment)
+    return {"ok": True}
+
+
+@router.get("/metrics")
+def metrics() -> dict[str, Any]:
+    return _base_service().metrics()
 
 
 @router.get("/sessions/{session_id}/weapons")

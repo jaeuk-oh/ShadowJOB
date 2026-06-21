@@ -68,6 +68,24 @@ class SessionService:
         rec.record_decision(note)
         self.repo.save(rec)
 
+    # ---------- 베타 계측 (P1-23) ----------
+    def record_survey(self, session_id: str, star_self_report: bool, comment: str = "") -> None:
+        rec = self.repo.get(session_id)
+        rec.record_survey(star_self_report, comment)
+        self.repo.save(rec)
+
+    def record_blind_eval(
+        self, session_id: str, looks_real: bool, evaluator: str = "", comment: str = ""
+    ) -> None:
+        rec = self.repo.get(session_id)
+        rec.record_blind_eval(looks_real, evaluator, comment)
+        self.repo.save(rec)
+
+    def metrics(self) -> dict:
+        from ..metrics import compute_metrics
+
+        return compute_metrics(self.repo.list_all())
+
     # ---------- 페르소나 대화 ----------
     def chat(self, session_id: str, persona_id: str, message: str) -> str:
         rec = self.repo.get(session_id)

@@ -64,3 +64,28 @@ export interface Weapons {
   };
   process_record: string;
 }
+
+export interface Metrics {
+  total_sessions: number;
+  completed: number;
+  completion_rate: number | null;
+  passed: number;
+  pass_rate: number | null;
+  revised_at_least_once: number;
+  survey: {
+    answered: number;
+    star_self_report_yes: number;
+    star_self_report_rate: number | null;
+  };
+  blind_eval: {
+    count: number;
+    looks_real_yes: number;
+    looks_real_rate: number | null;
+  };
+  funnel: Record<string, number>;
+  targets: {
+    completion_rate: number;
+    star_self_report_rate: number;
+    blind_looks_real_rate: number;
+  };
+}
