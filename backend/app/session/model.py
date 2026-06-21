@@ -14,7 +14,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from ..evaluation.scorer import Evaluation
+from typing import Any
+
+from ..evaluation.scorer import CriterionScore, Evaluation
 from .state import (
     State,
     assert_transition,
@@ -51,6 +53,39 @@ class SessionRecord:
     evaluations: list[Evaluation] = field(default_factory=list)
     rejections: list[str] = field(default_factory=list)
     decision_logs: list[DecisionLogEntry] = field(default_factory=list)
+    # 페르소나별 대화 히스토리 (정보 비대칭 유지, 영속화 대상)
+    persona_histories: dict[str, list[dict[str, str]]] = field(default_factory=dict)
+
+    # --- 직렬화 (Supabase/JSON 영속화용) ---
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "session_id": self.session_id,
+            "scenario_id": self.scenario_id,
+            "artifact_type": self.artifact_type,
+            "max_revisions": self.max_revisions,
+            "state": self.state.value,
+            "submissions": [vars(s) for s in self.submissions],
+            "evaluations": [_eval_to_dict(e) for e in self.evaluations],
+            "rejections": list(self.rejections),
+            "decision_logs": [vars(d) for d in self.decision_logs],
+            "persona_histories": self.persona_histories,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SessionRecord":
+        rec = cls(
+            session_id=data["session_id"],
+            scenario_id=data["scenario_id"],
+            artifact_type=data.get("artifact_type", "problem_brief"),
+            max_revisions=int(data.get("max_revisions", 1)),
+            state=State(data.get("state", State.ONBOARDING.value)),
+        )
+        rec.submissions = [Submission(**s) for s in data.get("submissions", [])]
+        rec.evaluations = [_eval_from_dict(e) for e in data.get("evaluations", [])]
+        rec.rejections = list(data.get("rejections", []))
+        rec.decision_logs = [DecisionLogEntry(**d) for d in data.get("decision_logs", [])]
+        rec.persona_histories = data.get("persona_histories", {})
+        return rec
 
     # --- 상태 전이 ---
     def transition(self, dst: State) -> None:
@@ -120,3 +155,25 @@ class SessionRecord:
     @property
     def passed(self) -> bool:
         return bool(self.evaluations) and self.evaluations[-1].passed
+
+
+def _eval_to_dict(e: Evaluation) -> dict[str, Any]:
+    return {
+        "rubric_id": e.rubric_id,
+        "rubric_version": e.rubric_version,
+        "scores": [vars(s) for s in e.scores],
+        "weighted_total": e.weighted_total,
+        "passed": e.passed,
+        "overall_comment": e.overall_comment,
+    }
+
+
+def _eval_from_dict(d: dict[str, Any]) -> Evaluation:
+    return Evaluation(
+        rubric_id=d["rubric_id"],
+        rubric_version=d["rubric_version"],
+        scores=tuple(CriterionScore(**s) for s in d.get("scores", [])),
+        weighted_total=d["weighted_total"],
+        passed=d["passed"],
+        overall_comment=d.get("overall_comment", ""),
+    )
