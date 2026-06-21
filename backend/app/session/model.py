@@ -1,0 +1,122 @@
+"""세션 레코드 — 1회전 동안 생성되는 모든 산출물·이력 보관 (순수 로직).
+
+무기 3종의 재료가 여기 다 모인다:
+- submissions: 회차별 제출본 (before→after / 무기①③)
+- evaluations: 회차별 채점 (반려 근거)
+- rejections: 매니저 반려 메시지
+- decision_logs: 사용자의 판단 근거 (무기③)
+- 페르소나 transcript는 오케스트레이터가 보유(필요 시 주입)
+
+영속화(Supabase)는 이 구조를 그대로 직렬화한다(P1-2). 지금은 인메모리.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+from ..evaluation.scorer import Evaluation
+from .state import (
+    State,
+    assert_transition,
+    next_after_review,
+)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+@dataclass
+class Submission:
+    round: int
+    text: str
+    created_at: str = field(default_factory=_now)
+
+
+@dataclass
+class DecisionLogEntry:
+    note: str
+    created_at: str = field(default_factory=_now)
+
+
+@dataclass
+class SessionRecord:
+    session_id: str
+    scenario_id: str
+    artifact_type: str = "problem_brief"
+    max_revisions: int = 1  # Q2 기본값
+    state: State = State.ONBOARDING
+
+    submissions: list[Submission] = field(default_factory=list)
+    evaluations: list[Evaluation] = field(default_factory=list)
+    rejections: list[str] = field(default_factory=list)
+    decision_logs: list[DecisionLogEntry] = field(default_factory=list)
+
+    # --- 상태 전이 ---
+    def transition(self, dst: State) -> None:
+        assert_transition(self.state, dst)
+        self.state = dst
+
+    # --- 진행 액션 ---
+    def receive_task(self) -> None:
+        self.transition(State.TASK_RECEIVED)
+
+    def start_exploring(self) -> None:
+        self.transition(State.EXPLORING)
+
+    def start_drafting(self) -> None:
+        # 탐색을 건너뛰고 바로 작성도 허용(상태 기계가 판단)
+        self.transition(State.DRAFTING)
+
+    def submit(self, text: str) -> Submission:
+        """현재 작성/재작업 상태에서 제출 → 심사 대기로."""
+        if self.state not in (State.DRAFTING, State.REVISING):
+            from .state import InvalidTransition
+
+            raise InvalidTransition(f"제출 불가 상태: {self.state.value}")
+        sub = Submission(round=len(self.submissions) + 1, text=text)
+        self.submissions.append(sub)
+        self.transition(State.UNDER_REVIEW)
+        return sub
+
+    def record_decision(self, note: str) -> None:
+        self.decision_logs.append(DecisionLogEntry(note=note))
+
+    @property
+    def revisions_used(self) -> int:
+        # 1차 제출 이후의 추가 제출 수 = 반려 후 재작업 횟수
+        return max(0, len(self.submissions) - 1)
+
+    def apply_review(self, evaluation: Evaluation, rejection_message: str | None = None) -> State:
+        """심사 결과 반영 → 다음 상태로. 반려면 매니저 메시지 보관."""
+        if self.state != State.UNDER_REVIEW:
+            from .state import InvalidTransition
+
+            raise InvalidTransition("심사 상태가 아님")
+        self.evaluations.append(evaluation)
+        dst = next_after_review(
+            passed=evaluation.passed,
+            revisions_used=self.revisions_used,
+            max_revisions=self.max_revisions,
+        )
+        if dst == State.REVISING and rejection_message is not None:
+            self.rejections.append(rejection_message)
+        self.transition(dst)
+        return dst
+
+    # --- 조회 ---
+    @property
+    def final_submission(self) -> Submission | None:
+        return self.submissions[-1] if self.submissions else None
+
+    @property
+    def first_submission(self) -> Submission | None:
+        return self.submissions[0] if self.submissions else None
+
+    @property
+    def is_completed(self) -> bool:
+        return self.state == State.COMPLETED
+
+    @property
+    def passed(self) -> bool:
+        return bool(self.evaluations) and self.evaluations[-1].passed
